@@ -44,8 +44,10 @@ public class FerramentasPedido {
         log.info("IA solicitou {}({}) para o usuário {}", funcao.name(), funcao.arguments(), usuarioId);
         try {
             Object resultado = switch (funcao.name()) {
-                case LISTAR_MEUS_PEDIDOS -> pedidoService.listarDoUsuario(usuarioId);
-                case BUSCAR_PEDIDO -> pedidoService.buscarDoUsuario(lerPedidoId(funcao), usuarioId);
+                case LISTAR_MEUS_PEDIDOS -> pedidoService.listarDoUsuario(usuarioId).stream()
+                        .map(PedidoParaIa::de)
+                        .toList();
+                case BUSCAR_PEDIDO -> PedidoParaIa.de(pedidoService.buscarDoUsuario(lerPedidoId(funcao), usuarioId));
                 default -> Map.of("erro", "Função desconhecida: " + funcao.name());
             };
             return jsonMapper.writeValueAsString(resultado);

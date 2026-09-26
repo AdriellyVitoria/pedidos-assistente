@@ -21,6 +21,10 @@ public record MensagemIa(
         return new MensagemIa("user", conteudo, null, null);
     }
 
+    public static MensagemIa assistente(String conteudo) {
+        return new MensagemIa("assistant", conteudo, null, null);
+    }
+
     public static MensagemIa resultadoFerramenta(String toolCallId, String conteudo) {
         return new MensagemIa("tool", conteudo, null, toolCallId);
     }

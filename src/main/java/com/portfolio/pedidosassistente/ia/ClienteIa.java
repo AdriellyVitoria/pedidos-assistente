@@ -10,8 +10,8 @@ import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -64,7 +64,7 @@ public class ClienteIa {
                 throw new IaIndisponivelException(HttpStatus.SERVICE_UNAVAILABLE, MENSAGEM_INDISPONIVEL);
             }
             return resposta.choices().getFirst().message();
-        } catch (ResourceAccessException ex) {
+        } catch (RestClientException ex) {
             log.warn("Falha de comunicação com a IA: {}", ex.getMessage());
             throw new IaIndisponivelException(HttpStatus.SERVICE_UNAVAILABLE, MENSAGEM_INDISPONIVEL);
         }

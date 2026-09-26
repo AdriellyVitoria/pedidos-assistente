@@ -65,7 +65,25 @@ export class Chat {
   private readonly listaMensagens = viewChild<ElementRef<HTMLElement>>('listaMensagens');
 
   constructor() {
+    this.carregarHistorico();
     this.carregarPedidos();
+  }
+
+  private carregarHistorico(): void {
+    this.chatService.historico().subscribe({
+      next: (historico) => {
+        if (this.mensagens().length > 0) {
+          return;
+        }
+        this.mensagens.set(
+          historico.flatMap((item): MensagemChat[] => [
+            { autor: 'usuario', texto: item.pergunta },
+            { autor: 'assistente', texto: item.resposta },
+          ]),
+        );
+        this.rolarParaFim();
+      },
+    });
   }
 
   protected carregarPedidos(): void {

@@ -42,6 +42,12 @@ export interface ChatResponse {
   resposta: string;
 }
 
+export interface MensagemHistorico {
+  pergunta: string;
+  resposta: string;
+  timestamp: string;
+}
+
 export interface MensagemChat {
   autor: 'usuario' | 'assistente';
   texto: string;

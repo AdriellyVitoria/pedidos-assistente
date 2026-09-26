@@ -28,6 +28,11 @@ public class ApiExceptionHandler {
         return ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
     }
 
+    @ExceptionHandler(LimiteDePerguntasException.class)
+    public ProblemDetail tratarLimiteDePerguntas(LimiteDePerguntasException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ProblemDetail tratarFalhaAutenticacao(AuthenticationException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Email ou senha inválidos");
