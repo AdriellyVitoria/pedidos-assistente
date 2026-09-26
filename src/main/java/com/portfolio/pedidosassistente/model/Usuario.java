@@ -29,7 +29,6 @@ public class Usuario {
     @Column(nullable = false, unique = true, length = 150)
     private String email;
 
-    // Guarda apenas o hash (BCrypt), nunca a senha em texto puro
     @Column(nullable = false)
     private String senha;
 

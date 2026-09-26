@@ -16,7 +16,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-// Histórico/auditoria: registra cada pergunta feita ao assistente e a resposta dada
 @Entity
 @Table(name = "mensagens_chat")
 @Getter

@@ -7,7 +7,6 @@ services:
       POSTGRES_USER: pedidos
       POSTGRES_PASSWORD: pedidos
     ports:
-      # 5433 no host para não conflitar com um Postgres local na 5432
       - "5433:5432"
     volumes:
       - pedidos-data:/var/lib/postgresql/data

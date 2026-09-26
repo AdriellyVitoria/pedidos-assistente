@@ -34,7 +34,6 @@ public class Pedido {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Dono do pedido: é por esta FK que toda consulta vai filtrar
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "usuario_id", nullable = false)
     private Usuario usuario;
@@ -59,7 +58,6 @@ public class Pedido {
         }
     }
 
-    // Mantém os dois lados do relacionamento sincronizados e o total sempre coerente com os itens
     public void adicionarItem(ItemPedido item) {
         item.setPedido(this);
         itens.add(item);
