@@ -19,6 +19,7 @@ O foco do projeto é mostrar, na prática, um jeito seguro de integrar um LLM a 
 - [Decisões técnicas](#decisões-técnicas)
 - [Como rodar localmente](#como-rodar-localmente)
 - [Testes](#testes)
+- [Como publicar](#como-publicar)
 - [API](#api)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [O que deu errado no caminho](#o-que-deu-errado-no-caminho)
@@ -55,6 +56,7 @@ Respostas reais do assistente, logado como a cliente Maria (dados de demonstraç
 - **Histórico da conversa** recente, carregado ao reabrir a tela
 - **Limite de perguntas por usuário** (10 por minuto e 50 por dia), para um único visitante não esgotar a cota gratuita da IA
 - **Mensagens amigáveis** quando a IA está indisponível ou sem cota, em vez de erros genéricos
+- **Aviso de "acordando o servidor"** na tela de login, porque a hospedagem gratuita desliga o backend quando fica sem uso
 - **Auditoria:** toda pergunta e resposta fica registrada no banco
 - **CRUD de pedidos** para o cliente (listar, consultar, criar, cancelar) e alteração de status restrita a administradores
 
@@ -232,7 +234,7 @@ Configuração obrigatória ausente. Defina as variáveis de ambiente DB_PASSWOR
 
 ## Testes
 
-**72 testes automatizados** (55 no backend e 17 no frontend), todos rodando sem chamar a IA real: ela é simulada com Mockito, o que deixa os testes rápidos, gratuitos e determinísticos. O GitHub Actions executa tudo a cada push e pull request (selo no topo desta página).
+**76 testes automatizados** (56 no backend e 20 no frontend), todos rodando sem chamar a IA real: ela é simulada com Mockito, o que deixa os testes rápidos, gratuitos e determinísticos. O GitHub Actions executa tudo a cada push e pull request (selo no topo desta página).
 
 ```bash
 ./mvnw test                               # backend (precisa do Docker rodando)
@@ -260,6 +262,56 @@ cd frontend && npx ng test --watch=false  # frontend
 | Sanitizador do Angular desligado com `bypassSecurityTrustHtml` | O teste de HTML malicioso falhou: o `<script>` chegou na tela |
 
 Em todos os casos a alteração foi desfeita e os testes voltaram a passar.
+
+---
+
+## Como publicar
+
+A publicação usa três serviços com plano gratuito:
+
+```
+Navegador → Vercel (Angular) ──/api/*──► Render (Spring Boot em Docker) ──► Neon (PostgreSQL)
+                                                     └──────────────────► Gemini
+```
+
+- **Vercel** serve o frontend e repassa tudo que começa com `/api` para o backend, removendo o prefixo (regra em [`frontend/vercel.json`](frontend/vercel.json)). Como o navegador só conversa com o domínio da Vercel, não é preciso configurar CORS.
+- **Render** roda o backend a partir do [`Dockerfile`](Dockerfile). No plano gratuito, o serviço desliga depois de alguns minutos sem uso e leva cerca de 1 minuto para voltar; a tela de login mostra um aviso enquanto isso.
+- **Neon** fornece o PostgreSQL. As tabelas são criadas pelo Flyway no primeiro start.
+
+Siga nesta ordem, porque cada passo usa um dado do anterior:
+
+**1. Banco (Neon)**
+1. Crie um projeto e copie os dados de conexão.
+2. Monte a URL no formato JDBC, com usuário e senha separados: `DB_URL=jdbc:postgresql://<host>/<banco>?sslmode=require`, `DB_USERNAME=<usuário>`, `DB_PASSWORD=<senha>`.
+
+**2. Backend (Render)**
+1. *New → Web Service*, conecte este repositório e escolha **Docker** (o `Dockerfile` da raiz é detectado).
+2. Nome do serviço: `pedidos-assistente-api`, o que gera a URL `https://pedidos-assistente-api.onrender.com` usada no `vercel.json`. Se o nome não estiver disponível, ajuste a URL no `vercel.json`.
+3. *Health Check Path*: `/status`.
+4. Variáveis de ambiente:
+
+| Variável | Valor |
+|---|---|
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | dados do Neon |
+| `JWT_SECRET` | chave aleatória nova, com 32 bytes ou mais (comando abaixo) |
+| `IA_API_KEY` | chave do Gemini |
+| `DADOS_DEMO` | `true` |
+| `CHAT_LIMITE_POR_DIA` | `200` (as contas de demonstração são compartilhadas por todos os visitantes) |
+
+Para gerar a chave JWT no PowerShell:
+
+```powershell
+$b = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
+```
+
+Sem `ADMIN_SENHA`, a conta de administrador não é criada no site público. Se faltar alguma variável obrigatória, o backend não sobe e o log do Render informa quais estão faltando.
+
+**3. Frontend (Vercel)**
+1. *Add New → Project*, importe este repositório e defina **Root Directory** = `frontend`.
+2. Instalação, build e pasta de saída já vêm do `vercel.json` (Node 24, definido no `package.json`).
+3. Depois do deploy, abra a URL gerada e entre com uma conta de demonstração.
+
+**Sobre a cota do Gemini:** cada pergunta usa de 2 a 3 requisições à IA, então 200 perguntas por dia podem chegar a cerca de 600 requisições. Confira no AI Studio os limites diário e por minuto do modelo configurado e reduza `CHAT_LIMITE_POR_DIA` se o limite for menor. Quando a cota acaba, o chat mostra uma mensagem amigável em vez de quebrar.
 
 ---
 
@@ -298,6 +350,7 @@ pedidos-assistente/
 ├── src/test/          testes unitários e de integração
 ├── .github/workflows/ testes automáticos no GitHub Actions
 ├── frontend/          aplicação Angular (login, chat e painel de pedidos)
+├── Dockerfile         imagem do backend usada no deploy
 └── docker-compose.yml PostgreSQL para desenvolvimento
 ```
 
@@ -327,5 +380,5 @@ Problemas reais encontrados durante o desenvolvimento e como foram resolvidos:
 - Como todo LLM, a IA às vezes resume errado a conversa anterior (por exemplo, citando o pedido errado ao lembrar o que foi perguntado). Isso não expõe dados, porque cada consulta passa pelo backend com o usuário do token.
 
 **Próximos passos**
-- Docker da aplicação completa (backend, frontend com nginx e banco) e deploy com link público
+- Link público da demonstração no topo deste README
 - Ampliar os testes de regras de negócio e das telas do frontend (os casos de segurança já estão cobertos)

@@ -6,6 +6,18 @@
       <p>Entre para conversar com o assistente sobre os seus pedidos.</p>
     </div>
 
+    @if (servidor() === 'acordando') {
+      <div class="aviso" role="status">
+        <mat-spinner diameter="18" />
+        <span>Acordando o servidor, aguarde... A hospedagem gratuita desliga quando fica sem uso, e o primeiro acesso pode levar até 1 minuto.</span>
+      </div>
+    } @else if (servidor() === 'indisponivel') {
+      <div class="aviso erro" role="alert">
+        <mat-icon>cloud_off</mat-icon>
+        <span>O servidor está indisponível no momento. Tente novamente mais tarde.</span>
+      </div>
+    }
+
     <form [formGroup]="form" (ngSubmit)="entrar()">
       <mat-form-field appearance="outline">
         <mat-label>Email</mat-label>

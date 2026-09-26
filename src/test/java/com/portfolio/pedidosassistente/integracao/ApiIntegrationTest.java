@@ -228,6 +228,14 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void statusEhPublicoENaoExpoeDados() throws Exception {
+        mockMvc.perform(get("/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
     void loginValidoDevolveTokenBearerComValidadeConfigurada() throws Exception {
         mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON)
                         .content("{\"email\":\"maria@email.com\",\"senha\":\"senha123\"}"))

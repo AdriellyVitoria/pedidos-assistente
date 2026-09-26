@@ -35,6 +35,25 @@
   }
 }
 
+.aviso {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+  font: var(--mat-sys-body-small);
+
+  mat-spinner, mat-icon { flex-shrink: 0; }
+
+  &.erro {
+    background: var(--mat-sys-error-container);
+    color: var(--mat-sys-on-error-container);
+  }
+}
+
 form {
   display: flex;
   flex-direction: column;

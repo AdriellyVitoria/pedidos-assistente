@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -11,6 +12,9 @@ import { finalize } from 'rxjs';
 
 import { AuthService } from '../../core/auth.service';
 import { mensagemDeErro } from '../../core/erro-api';
+import { StatusService } from '../../core/status.service';
+
+const TEMPO_ATE_MOSTRAR_AVISO_MS = 2_000;
 
 @Component({
   selector: 'app-login',
@@ -43,6 +47,26 @@ export class Login {
   protected readonly carregando = signal(false);
   protected readonly erro = signal<string | null>(null);
   protected readonly mostrarSenha = signal(false);
+  protected readonly servidor = signal<'verificando' | 'acordando' | 'pronto' | 'indisponivel'>('verificando');
+
+  constructor() {
+    const aviso = setTimeout(() => {
+      if (this.servidor() === 'verificando') {
+        this.servidor.set('acordando');
+      }
+    }, TEMPO_ATE_MOSTRAR_AVISO_MS);
+
+    inject(StatusService)
+      .aguardarServidor()
+      .pipe(
+        finalize(() => clearTimeout(aviso)),
+        takeUntilDestroyed(),
+      )
+      .subscribe({
+        next: () => this.servidor.set('pronto'),
+        error: () => this.servidor.set('indisponivel'),
+      });
+  }
 
   protected usarContaDemo(email: string): void {
     this.form.setValue({ email, senha: 'senha123' });
