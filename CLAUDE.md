@@ -58,9 +58,9 @@ Usuário → Frontend Angular (login + chat)
 1. Modelagem do banco (entidades JPA + relacionamentos)
 2. Backend CRUD básico de pedidos, sem IA ainda (endpoints simples pra validar a base)
 3. Autenticação com Spring Security + JWT
-4. Integração com IA via function calling (endpoint /chat)
+4. Integração com IA via function calling (endpoint /chat), com limite de rodadas de chamadas de função e mensagem amigável quando a cota gratuita do Gemini estourar (HTTP 429), sem retentativa automática agressiva
 5. Frontend Angular (login + tela de chat)
-6. Refino do comportamento da IA (evitar alucinação, escopo restrito a pedidos)
+6. Refino do comportamento da IA (evitar alucinação, escopo restrito a pedidos) e rate limiting por usuário no `/chat` (ex: 10 perguntas/minuto e 50/dia por conta), para um único visitante não esgotar a cota diária da API e derrubar o assistente para os demais
 7. Testes automatizados (JUnit + Mockito) focados em segurança e regras de negócio
 8. Deploy (Docker + hospedagem gratuita) e documentação (README com prints, arquitetura e "o que deu errado no caminho")
 
