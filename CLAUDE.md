@@ -66,8 +66,8 @@ Usuário → Frontend Angular (login + chat)
 > Atualize esta seção conforme for avançando, para o Claude sempre saber onde você parou.
 
 - [x] Fase 1 — Modelagem do banco (entidades em `model/`, Postgres via `docker compose` na porta 5433)
-- [x] Fase 2 — Backend CRUD básico (HTTP Basic provisório, app na porta 8081, dados de exemplo no perfil `dev`)
-- [ ] Fase 3 — Autenticação JWT
+- [x] Fase 2 — Backend CRUD básico (app na porta 8081, dados de exemplo no perfil `dev`)
+- [x] Fase 3 — Autenticação JWT (`POST /auth/login`, validação via `oauth2-resource-server`, HS256)
 - [ ] Fase 4 — Integração com IA
 - [ ] Fase 5 — Frontend Angular
 - [ ] Fase 6 — Refino da IA

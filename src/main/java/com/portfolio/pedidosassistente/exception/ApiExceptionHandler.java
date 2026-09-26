@@ -2,6 +2,7 @@ package com.portfolio.pedidosassistente.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -20,6 +21,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(RegraNegocioException.class)
     public ProblemDetail tratarRegraNegocio(RegraNegocioException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ProblemDetail tratarFalhaAutenticacao(AuthenticationException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Email ou senha inválidos");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
