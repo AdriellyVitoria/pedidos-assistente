@@ -1,0 +1,103 @@
+<mat-toolbar class="barra">
+  <mat-icon>support_agent</mat-icon>
+  <span class="titulo">Assistente de Pedidos</span>
+  <span class="espaco"></span>
+  <span class="usuario">{{ auth.usuario()?.email }}</span>
+  <button mat-icon-button (click)="auth.logout()" matTooltip="Sair" aria-label="Sair">
+    <mat-icon>logout</mat-icon>
+  </button>
+</mat-toolbar>
+
+<div class="conteudo">
+  <main class="chat">
+    <div class="mensagens" #listaMensagens>
+      @if (mensagens().length === 0) {
+        <div class="boas-vindas">
+          <mat-icon class="icone-grande">forum</mat-icon>
+          <h2>Olá! Como posso ajudar com seus pedidos?</h2>
+          <p>Pergunte sobre status, itens ou valores dos seus pedidos.</p>
+          <div class="sugestoes">
+            @for (sugestao of sugestoes; track sugestao) {
+              <button mat-stroked-button type="button" (click)="enviar(sugestao)">{{ sugestao }}</button>
+            }
+          </div>
+        </div>
+      }
+
+      @for (mensagem of mensagens(); track $index) {
+        <div class="mensagem" [class.do-usuario]="mensagem.autor === 'usuario'">
+          @if (mensagem.autor === 'assistente') {
+            <div class="balao markdown" [class.erro]="mensagem.erro" [innerHTML]="mensagem.texto | markdown"></div>
+          } @else {
+            <div class="balao">{{ mensagem.texto }}</div>
+          }
+        </div>
+      }
+
+      @if (enviando()) {
+        <div class="mensagem">
+          <div class="balao digitando" aria-label="O assistente está digitando">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      }
+    </div>
+
+    <form class="entrada" (ngSubmit)="enviar()">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="campo">
+        <textarea
+          matInput
+          [formControl]="pergunta"
+          placeholder="Digite sua pergunta..."
+          maxlength="500"
+          cdkTextareaAutosize
+          cdkAutosizeMinRows="1"
+          cdkAutosizeMaxRows="4"
+          (keydown.enter)="aoPressionarEnter($event)"
+        ></textarea>
+      </mat-form-field>
+      <button
+        mat-icon-button
+        class="enviar"
+        type="submit"
+        [disabled]="pergunta.invalid || enviando()"
+        aria-label="Enviar pergunta"
+      >
+        <mat-icon>send</mat-icon>
+      </button>
+    </form>
+  </main>
+
+  <aside class="painel">
+    <div class="painel-titulo">
+      <h3>Meus pedidos</h3>
+      <button mat-icon-button (click)="carregarPedidos()" matTooltip="Atualizar" aria-label="Atualizar pedidos">
+        <mat-icon>refresh</mat-icon>
+      </button>
+    </div>
+    <p class="dica">Dados vindos direto da API, para comparar com as respostas do assistente.</p>
+
+    @if (carregandoPedidos()) {
+      <mat-spinner diameter="32" class="carregando" />
+    } @else if (erroPedidos()) {
+      <p class="erro">{{ erroPedidos() }}</p>
+    } @else {
+      @for (pedido of pedidos(); track pedido.id) {
+        <mat-card appearance="outlined" class="pedido">
+          <div class="linha">
+            <strong>Pedido #{{ pedido.id }}</strong>
+            <span class="status status-{{ pedido.status }}">{{ rotuloStatus[pedido.status] }}</span>
+          </div>
+          <div class="detalhe">{{ pedido.dataCriacao | date: 'dd/MM/yyyy' }} · {{ pedido.valorTotal | currency }}</div>
+          <div class="itens">
+            @for (item of pedido.itens; track $index) {
+              <span>{{ item.quantidade }}x {{ item.nomeProduto }}</span>
+            }
+          </div>
+        </mat-card>
+      } @empty {
+        <p class="dica">Nenhum pedido encontrado.</p>
+      }
+    }
+  </aside>
+</div>
