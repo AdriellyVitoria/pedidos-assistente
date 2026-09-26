@@ -14,6 +14,7 @@ describe('Chat', () => {
   let fixture: ComponentFixture<Chat>;
 
   beforeEach(async () => {
+    HTMLElement.prototype.scrollTo = vi.fn();
     chatService.historico.mockReturnValue(of([]));
     pedidoService.listarMeusPedidos.mockReturnValue(of([]));
     await TestBed.configureTestingModule({
