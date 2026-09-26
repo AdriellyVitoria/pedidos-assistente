@@ -1,5 +1,7 @@
 # Assistente de Pedidos com IA
 
+[![Testes](https://github.com/AdriellyVitoria/pedidos-assistente/actions/workflows/ci.yml/badge.svg)](https://github.com/AdriellyVitoria/pedidos-assistente/actions/workflows/ci.yml)
+
 Chat em que um cliente autenticado conversa com uma IA para tirar dúvidas sobre os **próprios pedidos** ("cadê meu pedido de ontem?", "quanto custou o pedido 4?"). A IA responde apenas com dados reais do banco, nunca inventa informação e **não tem como acessar dados de outro cliente**.
 
 O foco do projeto é mostrar, na prática, um jeito seguro de integrar um LLM a dados sensíveis: a IA **nunca escreve SQL** nem acessa o banco. Ela só pode pedir ao backend que execute funções pré-definidas, e é o backend, com o usuário extraído do token JWT, que decide o que ela pode ver.
@@ -230,7 +232,7 @@ Configuração obrigatória ausente. Defina as variáveis de ambiente DB_PASSWOR
 
 ## Testes
 
-**49 testes automatizados** (33 no backend e 16 no frontend), todos rodando sem chamar a IA real: ela é simulada com Mockito, o que deixa os testes rápidos, gratuitos e determinísticos.
+**72 testes automatizados** (55 no backend e 17 no frontend), todos rodando sem chamar a IA real: ela é simulada com Mockito, o que deixa os testes rápidos, gratuitos e determinísticos. O GitHub Actions executa tudo a cada push e pull request (selo no topo desta página).
 
 ```bash
 ./mvnw test                               # backend (precisa do Docker rodando)
@@ -238,12 +240,26 @@ cd frontend && npx ng test --watch=false  # frontend
 ```
 
 **Backend**
-- **Unitários (JUnit 5 + Mockito):** regras de pedidos e cancelamento, funções expostas à IA (inclusive ignorar um `usuarioId` enviado por ela), loop de function calling, limite de rodadas, preservação da *thought signature* do Gemini, histórico da conversa e limites de perguntas por minuto e por dia.
-- **Integração (MockMvc + Testcontainers):** a aplicação inteira com segurança real e um **PostgreSQL 16 descartável** criado no Docker só para o teste. Cobre 401 sem token, token adulterado, 403 para rota de admin, 404 para pedido de outro usuário, validação, regras de negócio e o cenário principal: **a IA simulada tenta obter o pedido de outro cliente, e o teste confirma que ela recebe só um erro, sem nenhum dado**.
+- **Unitários (JUnit 5 + Mockito):** regras de pedidos e cancelamento, funções expostas à IA (inclusive ignorar um `usuarioId` enviado por ela), loop de function calling, limite de rodadas, histórico da conversa, limites de perguntas por minuto e por dia, geração do JWT (sem a senha no token), conversão do token para o usuário autenticado, recusa de chave JWT curta, verificação das variáveis obrigatórias e o formato JSON trocado com o Gemini (incluindo devolver a *thought signature* intacta).
+- **Integração (MockMvc + Testcontainers):** a aplicação inteira com segurança real e um **PostgreSQL 16 descartável** criado no Docker só para o teste, com o esquema criado pelas mesmas migrações do Flyway usadas em produção. Cobre:
+  - token ausente, adulterado, **expirado**, **de outro emissor**, **assinado com outra chave** ou com cabeçalho malformado → 401;
+  - 403 para rota de admin e 404 para pedido de outro usuário;
+  - **campos extras no corpo** (`usuarioId`, `valorTotal`, `status`) não mudam o dono, o total nem o status do pedido;
+  - o **limite de perguntas** responde 429 sem chegar a chamar a IA;
+  - o **histórico** devolve só as mensagens recentes do próprio usuário;
+  - o cenário principal: **a IA simulada tenta obter o pedido de outro cliente, e o teste confirma que ela recebe só um erro, sem nenhum dado**.
 
-**Frontend (Vitest):** interceptor (token só vai para a nossa API; logout em 401), guards de rota, serviço de autenticação (token expirado ou malformado) e tratamento de erros.
+**Frontend (Vitest):** interceptor (token só vai para a nossa API; logout em 401), guards de rota, serviço de autenticação (token expirado ou malformado), tratamento de erros e **HTML malicioso vindo da IA** (`<script>`, `onerror`, links `javascript:`) sendo neutralizado na tela sem perder a formatação.
 
-**Os testes pegam falhas de verdade?** Para confirmar, a checagem de posse foi quebrada de propósito, trocando `findByIdAndUsuarioId` por `findById`. Resultado: 6 testes falharam, entre eles um com "esperado 404, mas veio 200", ou seja, um cliente teria visto o pedido de outro. A alteração foi desfeita e tudo voltou a passar.
+**Os testes pegam falhas de verdade?** Cada regra de segurança foi quebrada de propósito para ver o teste falhar:
+
+| Regra quebrada de propósito | Resultado |
+|---|---|
+| `findByIdAndUsuarioId` trocado por `findById` (ignora o dono do pedido) | 6 testes falharam, incluindo "esperado 404, mas veio 200" |
+| Validação do emissor do JWT removida | `tokenDeOutroEmissorEhRecusado` falhou: "esperado 401, mas veio 200" |
+| Sanitizador do Angular desligado com `bypassSecurityTrustHtml` | O teste de HTML malicioso falhou: o `<script>` chegou na tela |
+
+Em todos os casos a alteração foi desfeita e os testes voltaram a passar.
 
 ---
 
@@ -280,6 +296,7 @@ pedidos-assistente/
 │   └── service/       regras de negócio, chat e limitador de perguntas
 ├── src/main/resources/db/migration/   migrações do banco (Flyway)
 ├── src/test/          testes unitários e de integração
+├── .github/workflows/ testes automáticos no GitHub Actions
 ├── frontend/          aplicação Angular (login, chat e painel de pedidos)
 └── docker-compose.yml PostgreSQL para desenvolvimento
 ```
@@ -311,4 +328,4 @@ Problemas reais encontrados durante o desenvolvimento e como foram resolvidos:
 
 **Próximos passos**
 - Docker da aplicação completa (backend, frontend com nginx e banco) e deploy com link público
-- Ampliar os testes (token expirado, HTML malicioso vindo da IA, telas do frontend) e rodá-los no GitHub Actions a cada push
+- Ampliar os testes de regras de negócio e das telas do frontend (os casos de segurança já estão cobertos)

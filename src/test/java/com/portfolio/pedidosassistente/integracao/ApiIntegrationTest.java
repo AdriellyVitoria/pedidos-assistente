@@ -1,11 +1,13 @@
 package com.portfolio.pedidosassistente.integracao;
 
 import com.jayway.jsonpath.JsonPath;
+import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.portfolio.pedidosassistente.ia.ChamadaFerramenta;
 import com.portfolio.pedidosassistente.ia.ClienteIa;
 import com.portfolio.pedidosassistente.ia.FuncaoChamada;
 import com.portfolio.pedidosassistente.ia.MensagemIa;
 import com.portfolio.pedidosassistente.model.ItemPedido;
+import com.portfolio.pedidosassistente.model.MensagemChat;
 import com.portfolio.pedidosassistente.model.Pedido;
 import com.portfolio.pedidosassistente.model.Role;
 import com.portfolio.pedidosassistente.model.StatusPedido;
@@ -13,6 +15,7 @@ import com.portfolio.pedidosassistente.model.Usuario;
 import com.portfolio.pedidosassistente.repository.MensagemChatRepository;
 import com.portfolio.pedidosassistente.repository.PedidoRepository;
 import com.portfolio.pedidosassistente.repository.UsuarioRepository;
+import com.portfolio.pedidosassistente.security.TokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -21,16 +24,30 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.hasItem;
@@ -71,6 +88,10 @@ class ApiIntegrationTest {
     @MockitoBean
     private ClienteIa clienteIa;
 
+    @Autowired
+    private JwtEncoder jwtEncoder;
+
+    private Usuario maria;
     private Usuario joao;
     private Long pedidoPagoDaMaria;
     private Long pedidoEnviadoDaMaria;
@@ -82,7 +103,7 @@ class ApiIntegrationTest {
         pedidoRepository.deleteAll();
         usuarioRepository.deleteAll();
 
-        Usuario maria = criarUsuario("maria@email.com", Role.CLIENTE);
+        maria = criarUsuario("maria@email.com", Role.CLIENTE);
         joao = criarUsuario("joao@email.com", Role.CLIENTE);
         criarUsuario("admin@email.com", Role.ADMIN);
 
@@ -204,6 +225,133 @@ class ApiIntegrationTest {
         mockMvc.perform(get("/chat/historico").header("Authorization", bearer("joao@email.com")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void loginValidoDevolveTokenBearerComValidadeConfigurada() throws Exception {
+        mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON)
+                        .content("{\"email\":\"maria@email.com\",\"senha\":\"senha123\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.tipo").value("Bearer"))
+                .andExpect(jsonPath("$.expiraEmSegundos").value(3600));
+    }
+
+    @Test
+    void tokenExpiradoEhRecusado() throws Exception {
+        Instant agora = Instant.now();
+        String token = gerarToken(jwtEncoder, TokenService.ISSUER, agora.minus(2, ChronoUnit.HOURS),
+                agora.minus(1, ChronoUnit.HOURS));
+
+        mockMvc.perform(get("/pedidos").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void tokenDeOutroEmissorEhRecusado() throws Exception {
+        Instant agora = Instant.now();
+        String token = gerarToken(jwtEncoder, "outro-sistema", agora, agora.plus(1, ChronoUnit.HOURS));
+
+        mockMvc.perform(get("/pedidos").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void tokenAssinadoComOutraChaveEhRecusado() throws Exception {
+        SecretKey outraChave = new SecretKeySpec(
+                "uma-chave-diferente-com-mais-de-32-bytes".getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        Instant agora = Instant.now();
+        String token = gerarToken(new NimbusJwtEncoder(new ImmutableSecret<>(outraChave)), TokenService.ISSUER,
+                agora, agora.plus(1, ChronoUnit.HOURS));
+
+        mockMvc.perform(get("/pedidos").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void cabecalhoDeAutorizacaoMalformadoRespondeNaoAutorizado() throws Exception {
+        for (String cabecalho : List.of("Basic bWFyaWE6c2VuaGExMjM=", "Bearer isso-nao-e-um-jwt", "Token abc", "Bearer")) {
+            mockMvc.perform(get("/pedidos").header("Authorization", cabecalho))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Test
+    void camposExtrasNoCorpoNaoMudamDonoTotalNemStatus() throws Exception {
+        String corpoMalicioso = "{\"usuarioId\":" + joao.getId() + ",\"valorTotal\":1.00,\"status\":\"ENTREGUE\","
+                + "\"itens\":[{\"nomeProduto\":\"Cabo\",\"quantidade\":3,\"precoUnitario\":10.00}]}";
+
+        mockMvc.perform(post("/pedidos").header("Authorization", bearer("maria@email.com"))
+                        .contentType(APPLICATION_JSON).content(corpoMalicioso))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.valorTotal").value(30.00))
+                .andExpect(jsonPath("$.status").value("AGUARDANDO_PAGAMENTO"));
+
+        mockMvc.perform(get("/pedidos").header("Authorization", bearer("joao@email.com")))
+                .andExpect(jsonPath("$", hasSize(1)));
+        mockMvc.perform(get("/pedidos").header("Authorization", bearer("maria@email.com")))
+                .andExpect(jsonPath("$", hasSize(3)));
+    }
+
+    @Test
+    void limiteDePerguntasBloqueiaAntesDeChamarAIa() throws Exception {
+        when(clienteIa.enviar(anyList(), anyList())).thenReturn(MensagemIa.assistente("Tudo certo."));
+        String token = bearer("joao@email.com");
+
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(post("/chat").header("Authorization", token)
+                            .contentType(APPLICATION_JSON).content("{\"pergunta\":\"meus pedidos\"}"))
+                    .andExpect(status().isOk());
+        }
+        mockMvc.perform(post("/chat").header("Authorization", token)
+                        .contentType(APPLICATION_JSON).content("{\"pergunta\":\"meus pedidos\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.detail").value(containsString("muito rápido")));
+
+        verify(clienteIa, times(10)).enviar(anyList(), anyList());
+    }
+
+    @Test
+    void historicoDevolveSoAsMensagensRecentesDoProprioUsuarioEmOrdem() throws Exception {
+        LocalDateTime agora = LocalDateTime.now(ZoneId.of("America/Sao_Paulo"));
+        registrarMensagem(maria, "antiga", agora.minusHours(2));
+        for (int i = 1; i <= 6; i++) {
+            registrarMensagem(maria, "pergunta " + i, agora.minusMinutes(7 - i));
+        }
+        registrarMensagem(joao, "pergunta do João", agora.minusMinutes(1));
+
+        mockMvc.perform(get("/chat/historico").header("Authorization", bearer("maria@email.com")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].pergunta",
+                        contains("pergunta 2", "pergunta 3", "pergunta 4", "pergunta 5", "pergunta 6")));
+    }
+
+    @Test
+    void repositorioNaoEncontraPedidoDeOutroUsuario() {
+        assertThat(pedidoRepository.findByIdAndUsuarioId(pedidoDoJoao, maria.getId())).isEmpty();
+        assertThat(pedidoRepository.findByIdAndUsuarioId(pedidoDoJoao, joao.getId())).isPresent();
+    }
+
+    private String gerarToken(JwtEncoder encoder, String emissor, Instant emitidoEm, Instant expiraEm) {
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(emissor)
+                .subject(maria.getId().toString())
+                .claim("email", maria.getEmail())
+                .claim("role", "CLIENTE")
+                .issuedAt(emitidoEm)
+                .expiresAt(expiraEm)
+                .build();
+        JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
+        return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
+    }
+
+    private void registrarMensagem(Usuario usuario, String pergunta, LocalDateTime quando) {
+        MensagemChat mensagem = new MensagemChat();
+        mensagem.setUsuario(usuario);
+        mensagem.setPergunta(pergunta);
+        mensagem.setResposta("resposta");
+        mensagem.setTimestamp(quando);
+        mensagemChatRepository.save(mensagem);
     }
 
     private String bearer(String email) throws Exception {
