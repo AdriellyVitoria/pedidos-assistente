@@ -121,6 +121,9 @@ Nos testes com a IA real, o log mostra exatamente isso: diante de "me mostra o p
 - **Total do pedido calculado no servidor** a partir dos itens; `BigDecimal` para dinheiro.
 - **`@EntityGraph`** nas consultas de pedidos para trazer os itens no mesmo SELECT (evita o problema N+1).
 - **`open-in-view` desligado**, para o acesso ao banco ficar restrito à camada de serviço.
+- **Migrações versionadas com Flyway** (`src/main/resources/db/migration`): o esquema do banco é definido por scripts SQL revisáveis e o Hibernate só valida (`ddl-auto=validate`) que as entidades batem com as tabelas. Os testes de integração rodam as mesmas migrações num banco vazio, então um script quebrado é detectado antes do deploy. As chaves estrangeiras usadas nos filtros por usuário têm índices próprios.
+- **Configuração segura por padrão:** a configuração base não tem nenhum segredo com valor padrão; os valores de desenvolvimento só existem no perfil `dev`. Esquecer de configurar a produção faz a aplicação não subir, em vez de subir com uma chave JWT conhecida.
+- **Contas de demonstração controladas por variável:** no site público, os clientes de demonstração podem ser criados (`DADOS_DEMO=true`), mas a conta de administrador só existe se uma senha própria for definida em `ADMIN_SENHA`, evitando um admin com senha conhecida.
 - **Erros no padrão ProblemDetail (RFC 9457):** 400 validação, 401/403 autenticação e autorização, 404 não encontrado, 409 regra de negócio, 429 limite, 503 IA indisponível.
 
 **Integração com a IA**
@@ -177,7 +180,9 @@ O PostgreSQL fica disponível na porta **5433** (para não conflitar com uma ins
 .\mvnw.cmd spring-boot:run    # Windows
 ```
 
-A API sobe na porta **8081**. No perfil `dev` (padrão), o banco é populado com dados de exemplo na primeira execução.
+A API sobe na porta **8081**. O `mvnw spring-boot:run` ativa automaticamente o perfil `dev`, que usa os valores de desenvolvimento (banco do `docker-compose.yml` e uma chave JWT local) e popula o banco com as contas de demonstração na primeira execução. As tabelas são criadas pelas migrações do Flyway.
+
+> Rodando pela IDE (botão "Run" da classe `PedidosAssistenteApplication`), defina `SPRING_PROFILES_ACTIVE=dev` na configuração de execução. Sem perfil, a aplicação exige todas as variáveis obrigatórias (veja abaixo).
 
 ### 4. Suba o frontend
 
@@ -201,17 +206,25 @@ Um bom teste: logado como Maria, tente fazer a IA mostrar o pedido do João.
 
 ### Variáveis de ambiente
 
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `IA_API_KEY` | — | Chave da API da IA (obrigatória para o chat) |
-| `IA_BASE_URL` | endpoint OpenAI-compatível do Gemini | Troca o provedor de IA |
-| `IA_MODELO` | `gemini-flash-lite-latest` | Modelo usado |
-| `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | banco do `docker-compose.yml` | Conexão com o PostgreSQL |
-| `JWT_SECRET` | valor de desenvolvimento | Chave de assinatura do JWT (mínimo de 32 bytes) |
-| `JWT_EXPIRACAO_MINUTOS` | `60` | Validade do token |
-| `CHAT_LIMITE_POR_MINUTO` / `CHAT_LIMITE_POR_DIA` | `10` / `50` | Limites de perguntas por usuário |
-| `PORT` | `8081` | Porta do backend |
-| `SPRING_PROFILES_ACTIVE` | `dev` | Perfil ativo (`dev` cria os dados de exemplo) |
+Fora do perfil `dev`, a aplicação **se recusa a subir** se faltar alguma variável obrigatória, e informa quais são:
+
+```
+Configuração obrigatória ausente. Defina as variáveis de ambiente DB_PASSWORD, DB_URL, DB_USERNAME, IA_API_KEY, JWT_SECRET ...
+```
+
+| Variável | Obrigatória? | Padrão | Descrição |
+|---|---|---|---|
+| `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | sim | no `dev`: banco do `docker-compose.yml` | Conexão com o PostgreSQL |
+| `JWT_SECRET` | sim | no `dev`: valor local | Chave de assinatura do JWT (mínimo de 32 bytes) |
+| `IA_API_KEY` | sim | no `dev`: opcional | Chave da API da IA |
+| `IA_BASE_URL` | não | endpoint OpenAI-compatível do Gemini | Troca o provedor de IA |
+| `IA_MODELO` | não | `gemini-flash-lite-latest` | Modelo usado |
+| `JWT_EXPIRACAO_MINUTOS` | não | `60` | Validade do token |
+| `CHAT_LIMITE_POR_MINUTO` / `CHAT_LIMITE_POR_DIA` | não | `10` / `50` | Limites de perguntas por usuário |
+| `DADOS_DEMO` | não | `false` (no `dev`: `true`) | Cria as contas de demonstração se o banco estiver vazio |
+| `ADMIN_SENHA` | não | vazio (no `dev`: `senha123`) | Se definida, cria também a conta `admin@email.com` com essa senha |
+| `PORT` | não | `8081` | Porta do backend |
+| `SPRING_PROFILES_ACTIVE` | não | nenhum (`dev` ao usar o `mvnw spring-boot:run`) | Perfil ativo |
 
 ---
 
@@ -265,6 +278,7 @@ pedidos-assistente/
 │   ├── repository/    Spring Data JPA
 │   ├── security/      geração e conversão do JWT, usuário autenticado
 │   └── service/       regras de negócio, chat e limitador de perguntas
+├── src/main/resources/db/migration/   migrações do banco (Flyway)
 ├── src/test/          testes unitários e de integração
 ├── frontend/          aplicação Angular (login, chat e painel de pedidos)
 └── docker-compose.yml PostgreSQL para desenvolvimento
@@ -293,10 +307,8 @@ Problemas reais encontrados durante o desenvolvimento e como foram resolvidos:
 **Limitações conscientes**
 - O limite de perguntas fica em memória: zera ao reiniciar e só funciona com uma instância. Com vários servidores, seria preciso um armazenamento compartilhado, como Redis.
 - O JWT continua válido até expirar; bloquear um usuário não invalida um token já emitido. As soluções seriam expiração curta com *refresh token* ou uma lista de tokens revogados.
-- O esquema do banco é gerado pelo Hibernate (`ddl-auto=update`), adequado só para desenvolvimento.
 - Como todo LLM, a IA às vezes resume errado a conversa anterior (por exemplo, citando o pedido errado ao lembrar o que foi perguntado). Isso não expõe dados, porque cada consulta passa pelo backend com o usuário do token.
 
 **Próximos passos**
 - Docker da aplicação completa (backend, frontend com nginx e banco) e deploy com link público
-- Migrações de banco versionadas com Flyway
 - Ampliar os testes (token expirado, HTML malicioso vindo da IA, telas do frontend) e rodá-los no GitHub Actions a cada push
