@@ -12,7 +12,10 @@ Este projeto tem dois objetivos:
 
 - **Backend:** Java 21, Spring Boot, Spring Data JPA, Spring Security (JWT), PostgreSQL
 - **Frontend:** Angular (Reactive Forms, Angular Material ou PrimeNG)
-- **IA:** API da OpenAI ou Anthropic, usando function calling / tool use (nunca geração de SQL livre)
+- **IA:** Google Gemini (camada gratuita do AI Studio), acessado pelo endpoint compatível com o formato da OpenAI, usando function calling (nunca geração de SQL livre)
+  - O backend tem um único cliente HTTP no formato OpenAI; provedor, chave e modelo vêm de variáveis de ambiente (`IA_BASE_URL`, `IA_API_KEY`, `IA_MODELO`), então trocar de provedor (Ollama, Groq, OpenAI) não exige mudar código
+  - A chave nunca vai para o código ou para o git, só para variável de ambiente
+  - Testes automatizados usam uma IA simulada (mock), sem chamar a API real
 
 ## Arquitetura (visão geral)
 
